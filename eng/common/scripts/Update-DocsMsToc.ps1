@@ -37,6 +37,9 @@ The add client id/application id for ms.author.
 
 .PARAMETER ClientSecret
 The client secret of add app for ms.author.
+
+.PARAMETER EnableServiceReadmeGen
+Use the parameter to enable the service level readme automation for each language repo in their own pace.
 #>
 
 param(
@@ -115,9 +118,9 @@ function GetPackageLookup($packageList) {
   return $packageLookup
 }
 
-function create-metadata-table($absolutePath, $readmeName, $moniker, $msService, $clientTableLink, $mgmtTableLink, $serviceName)
+function create-metadata-table($readmeFolder, $readmeName, $moniker, $msService, $clientTableLink, $mgmtTableLink, $serviceName)
 {
-  $readmePath = Join-Path $absolutePath -ChildPath $readmeName
+  $readmePath = Join-Path $readmeFolder -ChildPath $readmeName
   New-Item -Path $readmePath -Force
   $lang = $LanguageDisplayName
   $langTitle = "Azure $serviceName SDK for $lang"
@@ -129,12 +132,12 @@ function create-metadata-table($absolutePath, $readmeName, $moniker, $msService,
   # Add tables, seperate client and mgmt.
   $readmeHeader = "# $langTitle - $moniker"
   Add-Content -Path $readmePath -Value $readmeHeader
-  if (Test-Path (Join-Path $absolutePath -ChildPath $clientTableLink)) {
+  if (Test-Path (Join-Path $readmeFolder -ChildPath $clientTableLink)) {
     $clientTable = "## Client packages - $moniker`r`n"
     $clientTable += "[!INCLUDE [client-packages]($clientTableLink)]`r`n"
     Add-Content -Path $readmePath -Value $clientTable
   }
-  if (Test-Path (Join-Path $absolutePath -ChildPath $mgmtTableLink)) {
+  if (Test-Path (Join-Path $readmeFolder -ChildPath $mgmtTableLink)) {
     $mgmtTable = "## Management packages - $moniker`r`n"
     $mgmtTable += "[!INCLUDE [mgmt-packages]($mgmtTableLink)]`r`n"
     Add-Content -Path $readmePath -Value $mgmtTable -NoNewline
@@ -142,9 +145,9 @@ function create-metadata-table($absolutePath, $readmeName, $moniker, $msService,
 }
 
 # Update the metadata table on attributes: author, ms.author, ms.service
-function update-metadata-table($absolutePath, $readmeName, $serviceName, $msService)
+function update-metadata-table($readmeFolder, $readmeName, $serviceName, $msService)
 {
-  $readmePath = Join-Path $absolutePath -ChildPath $readmeName
+  $readmePath = Join-Path $readmeFolder -ChildPath $readmeName
   $readmeContent = Get-Content -Path $readmePath -Raw
   $null = $readmeContent -match "---`n*(?<metadata>(.*`n)*)---`n*(?<content>(.*`n)*)"
   $restContent = $Matches["content"]
@@ -156,7 +159,7 @@ function update-metadata-table($absolutePath, $readmeName, $serviceName, $msServ
   Set-Content -Path $readmePath -Value "$metadataString`n$restContent" -NoNewline
 }
 
-function generate-markdown-table($absolutePath, $readmeName, $packageInfo, $moniker) {
+function generate-markdown-table($readmeFolder, $readmeName, $packageInfo, $moniker) {
   $content = "| Reference | Package | Source |`r`n|---|---|---|`r`n" 
   # Here is the table, the versioned value will
   foreach ($pkg in $packageInfo) {
@@ -169,7 +172,7 @@ function generate-markdown-table($absolutePath, $readmeName, $packageInfo, $moni
     $repositoryLink = $RepositoryUri
     $packageLevelReadme = &$GetPackageLevelReadmeFn -packageMetadata $pkg
     $referenceLink = "[$($pkg.DisplayName)]($packageLevelReadme-readme.md)"
-    if (!(Test-Path (Join-Path $absolutePath -ChildPath "$packageLevelReadme-readme.md"))) {
+    if (!(Test-Path (Join-Path $readmeFolder -ChildPath "$packageLevelReadme-readme.md"))) {
       $referenceLink = $pkg.DisplayName
     }
     $githubLink = $GithubUri
@@ -179,7 +182,7 @@ function generate-markdown-table($absolutePath, $readmeName, $packageInfo, $moni
     $line = "|$referenceLink|[$($pkg.Package)]($repositoryLink/$($pkg.Package))|[Github]($githubLink)|`r`n"
     $content += $line
   }
-  Set-Content -Path (Join-Path $absolutePath -ChildPath $readmeName) -Value $content -NoNewline
+  Set-Content -Path (Join-Path $readmeFolder -ChildPath $readmeName) -Value $content -NoNewline
 }
 
 function generate-service-level-readme($readmeBaseName, $pathPrefix, $packageInfos, $serviceName) {
@@ -188,25 +191,25 @@ function generate-service-level-readme($readmeBaseName, $pathPrefix, $packageInf
   $monikers = @("latest", "preview")
   $msService = GetDocsMsService -packageInfo $packageInfos[0] -serviceName $serviceName
   foreach($moniker in $monikers) {
-    $absolutePath = "$DocRepoLocation/$pathPrefix/$moniker/"
+    $readmeFolder = "$DocRepoLocation/$pathPrefix/$moniker/"
     $serviceReadme = "$readmeBaseName.md"
     $clientIndexReadme  = "$readmeBaseName-client-index.md"
     $mgmtIndexReadme  = "$readmeBaseName-mgmt-index.md"
     $clientPackageInfo = $servicePackages.Where({ 'client' -eq $_.Type -and 'true' -eq $_.New}) | Sort-Object -Property Package
     if ($clientPackageInfo) {
-      generate-markdown-table -absolutePath "$absolutePath" -readmeName "$clientIndexReadme" -packageInfo $clientPackageInfo -moniker $moniker
+      generate-markdown-table -readmeFolder $readmeFolder -readmeName "$clientIndexReadme" -packageInfo $clientPackageInfo -moniker $moniker
     }
     $mgmtPackageInfo = $servicePackages.Where({ 'mgmt' -eq $_.Type -and 'true' -eq $_.New }) | Sort-Object -Property Package
     if ($mgmtPackageInfo) {
-      generate-markdown-table -absolutePath $absolutePath -readmeName "$mgmtIndexReadme" -packageInfo $mgmtPackageInfo -moniker $moniker
+      generate-markdown-table -readmeFolder $readmeFolder -readmeName "$mgmtIndexReadme" -packageInfo $mgmtPackageInfo -moniker $moniker
     }
-    if (!(Test-Path (Join-Path $absolutePath -ChildPath $serviceReadme))) {
-      create-metadata-table -absolutePath $absolutePath -readmeName $serviceReadme -moniker $moniker -msService $msService `
+    if (!(Test-Path (Join-Path $readmeFolder -ChildPath $serviceReadme))) {
+      create-metadata-table -readmeFolder $readmeFolder -readmeName $serviceReadme -moniker $moniker -msService $msService `
         -clientTableLink $clientIndexReadme -mgmtTableLink $mgmtIndexReadme `
         -serviceName $serviceName
     }
     else {
-      update-metadata-table -absolutePath $absolutePath -readmeName $serviceReadme -serviceName $serviceName -msService $msService
+      update-metadata-table -readmeFolder $readmeFolder -readmeName $serviceReadme -serviceName $serviceName -msService $msService
     }
   } 
 }
