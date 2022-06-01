@@ -160,7 +160,8 @@ function update-metadata-table($readmeFolder, $readmeName, $serviceName, $msServ
 }
 
 function generate-markdown-table($readmeFolder, $readmeName, $packageInfo, $moniker) {
-  $content = "| Reference | Package | Source |`r`n|---|---|---|`r`n" 
+  $tableHeader = "| Reference | Package | Source |`r`n|---|---|---|`r`n" 
+  $tableContent = ""
   # Here is the table, the versioned value will
   foreach ($pkg in $packageInfo) {
     if (!$pkg.VersionGA -and "latest" -eq $moniker) {
@@ -168,7 +169,7 @@ function generate-markdown-table($readmeFolder, $readmeName, $packageInfo, $moni
     }
     if (!$pkg.VersionPreview -and "preview" -eq $moniker) {
       continue
-    }
+      }
     $repositoryLink = $RepositoryUri
     $packageLevelReadme = &$GetPackageLevelReadmeFn -packageMetadata $pkg
     $referenceLink = "[$($pkg.DisplayName)]($packageLevelReadme-readme.md)"
@@ -180,9 +181,12 @@ function generate-markdown-table($readmeFolder, $readmeName, $packageInfo, $moni
       $githubLink = "$GithubUri/blob/main/$($pkg.FileMetadata.DirectoryPath)"
     }
     $line = "|$referenceLink|[$($pkg.Package)]($repositoryLink/$($pkg.Package))|[Github]($githubLink)|`r`n"
-    $content += $line
+    $tableContent += $line
   }
-  Set-Content -Path (Join-Path $readmeFolder -ChildPath $readmeName) -Value $content -NoNewline
+  if($tableContent) {
+    Add-Content -Path (Join-Path $readmeFolder -ChildPath $readmeName) -Value $tableHeader -NoNewline
+    Add-Content -Path (Join-Path $readmeFolder -ChildPath $readmeName) -Value $tableContent -NoNewline
+  }
 }
 
 function generate-service-level-readme($readmeBaseName, $pathPrefix, $packageInfos, $serviceName) {
@@ -250,7 +254,21 @@ for ($i = 0; $i -lt $metadata.Count; $i++) {
   foreach ($fileEntry in $fileMetadata) {
     if ($fileEntry.Name -eq $metadata[$i].Package) {
       if ($metadata[$i].PSObject.Members.Name -contains "FileMetadata") {
-        Write-Host "File metadata already added for $($metadata[$i].Package). Keeping the first entry found."
+        Write-Host "File metadata already added for $($metadata[$i].Package). Keeping the first entry found and update the version."
+        $originalVersion = [AzureEngSemanticVersion]::ParseVersionString($fileEntry.Version)
+        if (!$originalVersion) {
+          LogWarning "Did not parse the version correctly. Check version: $($fileEntry.Version)"
+          continue
+        }
+        if ($metadata[$i].VersionGA -and $originalVersion.IsPrerelease) {
+          $metadata[$i].VersionPreview = $fileEntry.Version
+        }
+        elseif($metadata[$i].VersionGA -and $fileEntry.DevVersion) {
+          $metadata[$i].VersionPreview = $fileEntry.DevVersion
+        }
+        elseif ($metadata[$i].VersionPreview -and !$originalVersion.IsPrerelease) {
+          $metadata[$i].VersionGA = $fileEntry.Version
+        }
         continue
       }
       if (!($metadata[$i].PSObject.Members.Name -contains "GroupId") -or ($fileEntry.Group -eq $metadata[$i].GroupId)) {
