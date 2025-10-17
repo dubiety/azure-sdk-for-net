@@ -54,8 +54,4 @@ directive:
 - from: swagger-document
   where-model: $.definitions.InputRouteMatrixFeaturesItem.properties.properties
   remove-property: type
-- from: swagger-document
-  where: $.paths./route/matrix:async.post.x-ms-long-running-operation-options
-  transform: |
-    $["final-state-via"] = "operation-location";
 ```
