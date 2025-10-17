@@ -7,10 +7,9 @@ Run `dotnet build /t:GenerateCode` to generate code.
 
 ``` yaml
 input-file:
-- https://github.com/Azure/azure-rest-api-specs/blob/eeb6a465860b7413763b51c31971f2ca9cc7008b/specification/maps/data-plane/Route/preview/1.0/route.json
+- https://raw.githubusercontent.com/Azure/azure-rest-api-specs/8052426d23bf87cd8a3ad29a2fd5127e6054c434/specification/maps/data-plane/Route/stable/2025-01-01/route.json
 title: RouteClient
 openapi-type: data-plane
-tag: 1.0
 add-credentials: true
 # at some point those credentials will move away to Swagger according to [this](https://github.com/Azure/autorest/issues/3718)
 credential-default-policy-type: BearerTokenCredentialPolicy
@@ -29,17 +28,34 @@ helper-namespace: Azure.Maps.Common
 ```yaml
 directive:
 - from: swagger-document
-  where: $.securityDefinitions
+  where: $.definitions.GeoJsonPoint
   transform: |
-    $["azure_auth"] = $["AADToken"];
-    delete $["AADToken"];
+    $["x-ms-discriminator-value"] = $["Point"];
 - from: swagger-document
-  where: '$.security[0]'
+  where: $.definitions.GeoJsonMultiPoint
   transform: |
-    $["azure_auth"] = $["AADToken"];
-    delete $["AADToken"];
+    $["x-ms-discriminator-value"] = $["MultiPoint"];
 - from: swagger-document
-  where: $.securityDefinitions
+  where: $.definitions.GeoJsonMultiLineString
   transform: |
-    $["SharedKey"]["in"] = "header";
+    $["x-ms-discriminator-value"] = $["MultiLineString"];
+- from: swagger-document
+  where: $.definitions.GeoJsonPolygon
+  transform: |
+    $["x-ms-discriminator-value"] = $["Polygon"];
+- from: swagger-document
+  where: $.definitions.AvoidEnum.items
+  transform: |
+    $["x-ms-enum"]["name"] = $["AvoidTypeEnum"];
+- from: swagger-document
+  where: $.definitions.RouteRangeAvoidEnum.items
+  transform: |
+    $["x-ms-enum"]["name"] = $["RouteRangeAvoidTypeEnum"];
+- from: swagger-document
+  where-model: $.definitions.InputRouteMatrixFeaturesItem.properties.properties
+  remove-property: type
+- from: swagger-document
+  where: $.paths./route/matrix:async.post.x-ms-long-running-operation-options
+  transform: |
+    $["final-state-via"] = "operation-location";
 ```
